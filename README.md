@@ -75,10 +75,15 @@ sidekick2/
 git clone https://github.com/leostronggg/ticketz-sidekick2.git ~/sidekick2
 cd ~/sidekick2
 mkdir -p backups
-docker compose build
 ```
 
 > **Nota:** Pode usar qualquer nome de pasta. O que importa é que o sidekick2 esteja na mesma máquina que o Ticketz para acessar a rede e volumes Docker.
+
+> O build da imagem Docker é feito automaticamente na primeira execução.
+> Opcionalmente, para buildar antecipado (útil para separar o tempo de build do backup):
+> ```bash
+> docker compose --profile do-not-start build
+> ```
 
 ### Ajuste o prefixo da rede/volumes (se necessário)
 

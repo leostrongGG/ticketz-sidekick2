@@ -74,29 +74,30 @@ backup() {
 
         # Filter media files in data directories (keep only referenced files)
         if [ $DBONLY -eq 0 ] && [ -f "${MEDIA_LIST}" ]; then
+            # Build a set of basenames to keep (single pass with awk - fast)
+            KEEP_NAMES=$(mktemp)
+            sed 's:.*/::' "${MEDIA_LIST}" | sort -u > "$KEEP_NAMES"
+
             for dir in "${DATA_DIRS[@]}"; do
                 if [ -d "$dir" ]; then
                     echo "Filtering media in ${dir}..."
-                    # Create temp copy of referenced files, remove rest, restore
-                    TMPDIR=$(mktemp -d)
-                    while IFS= read -r filename; do
-                        # Find and copy matching files preserving directory structure
-                        find "$dir" -name "$filename" -exec cp --parents {} "$TMPDIR" \; 2>/dev/null
-                    done < "${MEDIA_LIST}"
-
-                    # Count originals vs kept
                     ORIG_COUNT=$(find "$dir" -type f | wc -l)
-                    KEPT_COUNT=$(find "$TMPDIR$dir" -type f 2>/dev/null | wc -l)
-                    echo "  ${dir}: ${ORIG_COUNT} files -> ${KEPT_COUNT} kept"
 
-                    # Replace directory contents with filtered ones
-                    rm -rf "${dir:?}"/*
-                    if [ -d "$TMPDIR$dir" ]; then
-                        cp -a "$TMPDIR$dir"/* "$dir"/ 2>/dev/null
-                    fi
-                    rm -rf "$TMPDIR"
+                    # List all files as "basename\tfullpath", remove those not in keep set
+                    # awk loads keep set into memory (O(n+m) instead of O(n*m) find calls)
+                    FILES_TO_REMOVE=$(mktemp)
+                    find "$dir" -type f -printf '%f\t%p\n' | \
+                        awk -F'\t' 'NR==FNR{keep[$1]=1; next} !($1 in keep){print $2}' \
+                        "$KEEP_NAMES" - > "$FILES_TO_REMOVE"
+                    REMOVED=$(wc -l < "$FILES_TO_REMOVE")
+                    xargs -r -d '\n' rm -f < "$FILES_TO_REMOVE"
+                    rm -f "$FILES_TO_REMOVE"
+
+                    KEPT_COUNT=$(find "$dir" -type f | wc -l)
+                    echo "  ${dir}: ${ORIG_COUNT} files -> ${KEPT_COUNT} kept (${REMOVED} removed)"
                 fi
             done
+            rm -f "$KEEP_NAMES"
         fi
         rm -f "${MEDIA_LIST}"
     fi
