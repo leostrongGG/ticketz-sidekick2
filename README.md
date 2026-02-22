@@ -1,4 +1,4 @@
-# 🔧 ticketz-sidekick2
+﻿# 🔧 ticketz-sidekick2
 
 Ferramenta avançada de backup, restore e importação de empresas para o [Ticketz](https://github.com/ticketz-oss/ticketz) (sistema multi-tenant de atendimento via WhatsApp).
 
@@ -8,47 +8,56 @@ Baseado no [ticketz-sidekick](https://github.com/ticketz-oss/ticketz-sidekick) o
 
 - ✅ Backup filtrado por empresa(s) específica(s) com `--companies`
 - ✅ Importação de empresa para instalação existente com remapeamento completo de IDs
+- ✅ Backups salvos na **própria pasta do sidekick2** — independente da instalação Ticketz
 - ✅ Company 1 (admin/sistema) sempre incluída automaticamente
 - ✅ Conexões WhatsApp da company 1 excluídas para evitar conflitos de sessão
 - ✅ Mídias filtradas para incluir apenas arquivos referenciados
-- ✅ Compatível com o processo de restore padrão do sidekick e auto-instalador
 - ✅ Roda como container **separado** ao lado da instalação Ticketz existente
 
 ## 🏗️ Arquitetura
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  PostgreSQL (Container Ticketz)                         │
-│  └─ 51 tabelas · multi-tenant por companyId             │
-└─────────────────────────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────┐
-│  sidekick2 (Container separado)                         │
-│  ├─ sidekick2.sh        (orquestra backup/restore/import│
-│  ├─ ticketz-filter.py   (filtra dump por empresa)       │
-│  └─ ticketz-import.py   (remapeia IDs para importação)  │
-└─────────────────────────────────────────────────────────┘
-         ↓                ↓                ↓
+~/
+  ticketz-docker-acme/        instalação Ticketz (auto-instalador)
+  sidekick2/                  este projeto (pasta separada)
+    backups/                  backups gerados ficam AQUI
+      ticketz-backup-xxx.tar.gz
+```
+
+```
+
+  PostgreSQL (Container Ticketz)                         
+   89 tabelas  multi-tenant por companyId             
+
+                         
+
+  sidekick2 (Container separado)                         
+   sidekick2.sh        (orquestra backup/restore/import)
+   ticketz-filter.py   (filtra dump por empresa)       
+   ticketz-import.py   (remapeia IDs para importação)  
+
+                                         
      [backup]         [restore]        [import]
-    pg_dump →          tar.gz →        backup →
-    filter →          psql load       scan IDs →
-    tar.gz                            remap IDs →
-                                      transação SQL
+    pg_dump           tar.gz         backup 
+    filter           psql load       scan IDs 
+    tar.gz            volumes         remap IDs 
+     sidekick2/                      transação SQL
+      backups/
 ```
 
 ## 📦 Estrutura do Projeto
 
 ```
-ticketz-sidekick2/
-├── sidekick2.sh            # Script principal (backup/restore/import)
-├── ticketz-filter.py       # Filtro de dump SQL por empresa (2 passagens)
-├── ticketz-import.py       # Importação com remapeamento de IDs
-├── Dockerfile              # Container baseado em postgres:16-alpine
-├── docker-compose.yaml     # Configuração standalone com rede/volumes externos
-├── README.md               # Esta documentação
-├── CONTRIBUTING.md         # Guia de contribuição
-├── LICENSE                 # Licença MIT
-└── backups/                # Backups gerados (gitignored)
+sidekick2/
+ sidekick2.sh            # Script principal (backup/restore/import)
+ ticketz-filter.py       # Filtro de dump SQL por empresa (2 passagens)
+ ticketz-import.py       # Importação com remapeamento de IDs
+ Dockerfile              # Container baseado em postgres:16-alpine
+ docker-compose.yaml     # Configuração standalone com rede/volumes externos
+ README.md               # Esta documentação
+ CONTRIBUTING.md         # Guia de contribuição
+ LICENSE                 # Licença MIT
+ backups/                # Backups gerados (gitignored)
 ```
 
 ## 🚀 Instalação
@@ -61,44 +70,37 @@ ticketz-sidekick2/
 
 ### Setup
 
-1. **Clone o repositório** (na mesma pasta pai do Ticketz)
-
-```
-~/
-  ticketz-docker-acme/   ← instalação Ticketz existente (padrão auto-instalador)
-  ticketz-sidekick2/     ← este projeto
-```
-
 ```bash
-cd ~
-git clone https://github.com/leostronggg/ticketz-sidekick2.git
-cd ticketz-sidekick2
+# Clone na pasta ~/sidekick2 (nome curto, separado do Ticketz)
+git clone https://github.com/leostronggg/ticketz-sidekick2.git ~/sidekick2
+cd ~/sidekick2
 mkdir -p backups
+docker compose build
 ```
 
-2. **Ajuste o prefixo da rede/volumes** (se necessário)
+> **Nota:** Pode usar qualquer nome de pasta. O que importa é que o sidekick2 esteja na mesma máquina que o Ticketz para acessar a rede e volumes Docker.
 
-O `docker-compose.yaml` usa `ticketz-docker-acme_` como prefixo (padrão do auto-instalador).
-Se sua pasta do Ticketz tem outro nome, ajuste o prefixo:
+### Ajuste o prefixo da rede/volumes (se necessário)
+
+O `docker-compose.yaml` usa `ticketz-docker-acme_` como prefixo  padrão do auto-instalador.
+Se a pasta do Ticketz tem outro nome, ajuste o prefixo no `docker-compose.yaml`:
 
 ```bash
 # Verificar o nome correto
 docker network ls | grep ticketz
-
-# Se necessário, editar docker-compose.yaml e trocar o prefixo
-```
-
-3. **Build do container**
-
-```bash
-docker compose build
+docker volume ls | grep ticketz
 ```
 
 ## 💡 Uso
 
-### 1️⃣ Backup Filtrado por Empresa
+### 1️⃣ Backup por Empresa (uso principal)
+
+Gera um backup contendo apenas os dados de uma ou mais empresas específicas.
+O arquivo `.tar.gz` é salvo em `~/sidekick2/backups/`.
 
 ```bash
+cd ~/sidekick2
+
 # Backup apenas da empresa 263 (company 1/admin sempre incluída)
 docker compose run --rm sidekick2 backup --companies 263
 
@@ -111,34 +113,45 @@ docker compose run --rm sidekick2 backup --companies 10-50
 # Misto
 docker compose run --rm sidekick2 backup --companies 263,10-20,45
 
-# Apenas banco de dados (sem mídias)
+# Apenas banco de dados (sem mídias — mais rápido)
 docker compose run --rm sidekick2 backup --companies 263 --dbonly
 ```
 
-### 2️⃣ Backup/Restore Padrão
+O backup gerado fica em `~/sidekick2/backups/ticketz-backup-YYYYMMDDHHMMSS.tar.gz`
+
+### 2️⃣ Backup Completo
 
 ```bash
-# Backup completo (todas as empresas)
+cd ~/sidekick2
+
+# Backup de todas as empresas
 docker compose run --rm sidekick2 backup
 
-# Backup apenas banco de dados
+# Apenas banco de dados
 docker compose run --rm sidekick2 backup --dbonly
+```
 
-# Restore do último backup (banco deve estar VAZIO)
+### 3️⃣ Restore
+
+Restaura o backup mais recente de `~/sidekick2/backups/` para o banco e volumes do Ticketz.
+**O banco deve estar vazio**  use após uma instalação limpa do Ticketz.
+
+```bash
+cd ~/sidekick2
+
+# Coloque o arquivo .tar.gz em ~/sidekick2/backups/
+# O restore usa o arquivo mais recente automaticamente
 docker compose run --rm sidekick2 restore
 ```
 
-Os backups são salvos em `./backups/` no host.
-
-### 3️⃣ Import (adicionar empresa a uma instalação existente)
+### 4️⃣ Import (adicionar empresa a instalação existente)
 
 Importa uma empresa de um backup filtrado para um banco Ticketz ativo.
 Todos os IDs são remapeados para evitar conflitos. A operação é envolvida
-em uma transação PostgreSQL — se qualquer coisa falhar, o banco **NÃO é modificado**.
+em uma transação PostgreSQL  se qualquer coisa falhar, o banco **não é modificado**.
 
 ```bash
-# Primeiro, crie um backup filtrado com UMA empresa:
-docker compose run --rm sidekick2 backup --companies 263
+cd ~/sidekick2
 
 # Preview da importação (gera SQL sem executar):
 docker compose run --rm sidekick2 import /backups/ticketz-backup-XXXXX.tar.gz --dry-run
@@ -171,6 +184,54 @@ docker compose run --rm sidekick2 import /backups/ticketz-backup-XXXXX.tar.gz
 7. SQL remapeado é executado em transação única (`BEGIN`/`COMMIT`)
 8. Sequences do PostgreSQL são atualizadas (`setval`)
 
+## 🔄 Fluxos Completos
+
+### Migrar empresa para novo servidor (instalação limpa)
+
+**Servidor origem:**
+```bash
+cd ~/sidekick2
+docker compose run --rm sidekick2 backup --companies 263
+# Arquivo gerado: ~/sidekick2/backups/ticketz-backup-YYYYMMDDHHMMSS.tar.gz
+# Baixe via SCP/FTP para sua máquina local
+```
+
+**Servidor destino — resetar e restaurar:**
+```bash
+# 1. Remover instalação antiga completamente
+cd ~/ticketz-docker-acme
+docker compose down -v          # remove containers + volumes Docker
+cd ~
+rm -rf ~/ticketz-docker-acme    # remove a pasta (backups estão em ~/sidekick2, não aqui)
+
+# 2. Instalar Ticketz limpo
+curl -sSL get.ticke.tz | sudo bash -s seudominio seuemail
+
+# 3. sidekick2 já está em ~/sidekick2 — envie o backup para lá via SCP/FTP
+#    (se ainda não instalou o sidekick2 neste servidor, veja Instalação acima)
+
+# 4. Restaurar
+cd ~/sidekick2
+docker compose run --rm sidekick2 restore
+```
+
+### Atualizar empresa (re-restaurar com dados mais recentes)
+
+```bash
+# Servidor origem: gerar backup atualizado
+cd ~/sidekick2
+docker compose run --rm sidekick2 backup --companies 263
+
+# Servidor destino: limpar banco e restaurar
+cd ~/ticketz-docker-acme
+docker compose down -v    # apaga os volumes (banco + mídias)
+docker compose up -d      # recria tudo vazio, sobe containers
+
+cd ~/sidekick2
+# (coloque o novo .tar.gz em ~/sidekick2/backups/)
+docker compose run --rm sidekick2 restore
+```
+
 ## 🔄 Como Funciona o Filtro por Empresa
 
 1. `pg_dump` gera o dump completo do banco
@@ -180,8 +241,6 @@ docker compose run --rm sidekick2 import /backups/ticketz-backup-XXXXX.tar.gz
 3. Mídias em `/backend-public` e `/backend-private` são filtradas para manter apenas arquivos referenciados
 4. O dump filtrado e mídias são empacotados em `ticketz-backup-*.tar.gz`
 
-O `.tar.gz` resultante é totalmente compatível com o restore padrão do sidekick e do auto-instalador.
-
 ### Company 1 (Admin/Sistema)
 
 A company 1 é a empresa de sistema do Ticketz. É **sempre incluída** porque:
@@ -189,7 +248,7 @@ A company 1 é a empresa de sistema do Ticketz. É **sempre incluída** porque:
 - `CheckCompanyCompliant` trata company 1 como sempre em conformidade
 - Seeds padrão criam a company 1 com configurações essenciais
 
-Porém, as **conexões WhatsApp da company 1 são excluídas** para evitar conflitos de sessão ao restaurar em outro servidor.
+As **conexões WhatsApp da company 1 são excluídas** para evitar conflitos de sessão ao restaurar em outro servidor.
 
 ## 📊 Classificação das Tabelas
 
@@ -197,11 +256,12 @@ Porém, as **conexões WhatsApp da company 1 são excluídas** para evitar confl
 |---|---|---|
 | **Globais** | Plans, Helps, Translations, SequelizeMeta, SequelizeData | Sem filtro (mantém tudo) |
 | **Diretas** | Contacts, Tickets, Messages, Users, Queues, Whatsapps, +16 | Filtro por `companyId` |
-| **Indiretas** | Baileys, BaileysKeys, ChatMessages, ContactTags, TicketTags, +16 | Filtro por FK → IDs coletados |
+| **Indiretas** | Baileys, BaileysKeys, ChatMessages, ContactTags, TicketTags, +16 | Filtro por FK  IDs coletados |
 | **Empresa** | Companies | Filtro por `id` |
 
 ## ⚠️ Avisos Importantes
 
+- **Backups ficam em `~/sidekick2/backups/`**  pasta do sidekick2, nunca dentro do Ticketz. Isso garante que ao deletar a pasta do Ticketz para reinstalar, os backups não são perdidos.
 - **S3/Storage remoto**: Se a instalação de origem usava S3 para mídia, use um **bucket diferente** no destino para evitar conflitos. URLs de S3 no banco **NÃO são remapeadas**.
 - **Plans**: O `planId` no registro da empresa deve corresponder a um Plan válido no banco destino.
 - **Sessões WhatsApp**: Dados do Baileys são importados mas podem não funcionar no novo servidor (sessões são específicas do dispositivo).
@@ -214,26 +274,22 @@ Porém, as **conexões WhatsApp da company 1 são excluídas** para evitar confl
 - ✅ **Backup de segurança** criado automaticamente antes do import
 - ✅ **`session_replication_role = replica`** — desabilita triggers FK durante import
 - ✅ **Validações** — verifica empresa única, banco não-vazio, backend parado
-- ✅ **Compatível** com restore padrão e auto-instalador
 
 ## 🔧 Troubleshooting
 
 ### Erro de rede/volume não encontrado
 
 ```bash
-# Verificar nomes corretos
 docker network ls | grep ticketz
 docker volume ls | grep ticketz
-
 # O prefixo deve corresponder ao docker-compose.yaml
 ```
 
 ### Erro de permissão no backup
 
 ```bash
-# Verificar se a pasta backups existe e tem permissão
-mkdir -p backups
-chmod 755 backups
+mkdir -p ~/sidekick2/backups
+chmod 755 ~/sidekick2/backups
 ```
 
 ### Verificar containers do Ticketz
@@ -248,18 +304,22 @@ Contribuições são bem-vindas! Veja [CONTRIBUTING.md](CONTRIBUTING.md) para de
 
 ## 📝 Changelog
 
+### v1.1.0 (2026-02-22)
+-  Backups salvos na pasta do sidekick2 (independente do Ticketz)
+-  README corrigido com fluxos completos de migração e restore
+-  Clone com nome personalizado documentado (`~/sidekick2`)
+
 ### v1.0.0 (2026-02-22)
-- ✨ Release inicial
+-  Release inicial
 - Backup filtrado por empresa(s) com `--companies`
 - Import com remapeamento completo de IDs
 - Dry-run para preview de importação
 - Backup de segurança automático pré-import
 - Transação atômica PostgreSQL
-- Documentação completa
 
 ## 📄 Licença
 
-MIT License — veja [LICENSE](LICENSE) para detalhes.
+MIT License  veja [LICENSE](LICENSE) para detalhes.
 
 ## ⚠️ Disclaimer
 
