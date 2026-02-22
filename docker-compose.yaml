@@ -1,0 +1,38 @@
+# Network and volumes are external - owned by the main ticketz project.
+# The prefix "ticketz-docker-acme_" comes from the ticketz project folder name
+# (default for the auto-installer: ~/ticketz-docker-acme/).
+# If your ticketz folder has a different name, adjust the prefix accordingly,
+# or check with: docker network ls | grep ticketz
+
+networks:
+  ticketz-docker-acme_ticketz:
+    external: true
+
+volumes:
+  ticketz-docker-acme_backend_public:
+    external: true
+  ticketz-docker-acme_backend_private:
+    external: true
+
+services:
+
+  sidekick2:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    # Alternatively, once published to a registry:
+    # image: ghcr.io/leostronggg/ticketz-sidekick2:latest
+    profiles: ["do-not-start"]
+    environment:
+      - DB_NAME=${DB_NAME:-ticketz}
+      - DB_USER=${DB_USER:-ticketz}
+      - DB_HOST=${DB_HOST:-postgres}
+      - DB_PORT=${DB_PORT:-5432}
+      - RETENTION_FILES=${RETENTION_FILES:-7}
+    restart: unless-stopped
+    volumes:
+      - ticketz-docker-acme_backend_public:/backend-public
+      - ticketz-docker-acme_backend_private:/backend-private
+      - ./backups:/backups
+    networks:
+      - ticketz-docker-acme_ticketz

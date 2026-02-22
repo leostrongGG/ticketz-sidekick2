@@ -1,3 +1,7 @@
 *.tar.gz
 *.sql
 _media_keep.txt
+
+# Runtime folders (created on the server)
+backups/
+retrieve/
