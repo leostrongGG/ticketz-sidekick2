@@ -63,16 +63,16 @@ sidekick2/
 ## 🚀 Instalação
 
 ### Pré-requisitos
-
+Importante: o restore espera um banco *vazio* (sem tabelas). Há duas formas seguras de preparar o ambiente:
 - Linux com Docker e Docker Compose
 - Ticketz instalado (auto-instalador ou manual)
 - Acesso ao servidor via SSH
 
 ### Setup
-
-```bash
-# Clone na pasta ~/sidekick2 (nome curto, separado do Ticketz)
-git clone https://github.com/leostronggg/ticketz-sidekick2.git ~/sidekick2
+docker compose down -v  # para remover containers + volumes (APAGA o banco atual)
+docker compose up -d    # depois reinstale (instalador ou docker compose up)
+cd ~/sidekick2
+docker compose run --rm sidekick2 restore  # e então rode o restore a partir da pasta ~/sidekick2
 cd ~/sidekick2
 mkdir -p backups
 ```
@@ -88,6 +88,7 @@ mkdir -p backups
 ### Ajuste o prefixo da rede/volumes (se necessário)
 
 O `docker-compose.yaml` usa `ticketz-docker-acme_` como prefixo  padrão do auto-instalador.
+Observação: `docker compose up -d` aceita o *nome do serviço* definido no `docker-compose.yaml` (ex.: `postgres`), não o nome do container (`ticketz-docker-acme-postgres-1`). Use `docker compose config --services` para listar os serviços do compose.
 Se a pasta do Ticketz tem outro nome, ajuste o prefixo no `docker-compose.yaml`:
 
 ```bash

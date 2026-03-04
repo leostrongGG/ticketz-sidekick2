@@ -12,6 +12,7 @@ WORKDIR /app
 COPY sidekick2.sh /app/sidekick2.sh
 COPY ticketz-filter.py /app/ticketz-filter.py
 COPY ticketz-import.py /app/ticketz-import.py
+COPY ticketz-verify.py /app/ticketz-verify.py
 
 RUN chmod +x /app/sidekick2.sh
 

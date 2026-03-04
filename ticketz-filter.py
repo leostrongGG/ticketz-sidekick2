@@ -209,6 +209,7 @@ def pass2_write_filtered(dump_path, output_path, company_ids, id_sets, c1_wa_ids
     line_count = 0
     total_kept = 0
     total_skipped = 0
+    total_wa_nulled = 0
     media_files = set()
 
     with open(dump_path, 'r', encoding='utf-8', errors='replace') as fin, \
@@ -220,6 +221,7 @@ def pass2_write_filtered(dump_path, output_path, company_ids, id_sets, c1_wa_ids
         filter_idx = -1
         filter_set = None
         media_indices = []
+        wa_idx = -1  # whatsappId column index (for fixing orphans)
 
         for line in fin:
             line_count += 1
@@ -256,6 +258,10 @@ def pass2_write_filtered(dump_path, output_path, company_ids, id_sets, c1_wa_ids
                             if idx >= 0:
                                 media_indices.append(idx)
 
+                    # Track whatsappId column to NULL out references to
+                    # excluded Company 1 Whatsapps (prevents FK orphans)
+                    wa_idx = col_idx(cols, 'whatsappId') if c1_wa_ids else -1
+
                     fout.write(line)
                 else:
                     fout.write(line)
@@ -267,6 +273,7 @@ def pass2_write_filtered(dump_path, output_path, company_ids, id_sets, c1_wa_ids
                     current_table = None
                     filter_mode = None
                     media_indices = []
+                    wa_idx = -1
 
                 elif filter_mode == 'global':
                     fout.write(line)
@@ -292,6 +299,16 @@ def pass2_write_filtered(dump_path, output_path, company_ids, id_sets, c1_wa_ids
                                 fields[filter_idx] in filter_set)
 
                     if keep:
+                        # Fix orphan whatsappId references: Company 1 Whatsapps
+                        # are excluded from the dump, so any row referencing
+                        # them would create an FK violation on restore.
+                        # Set to NULL to prevent missing FK constraints.
+                        if wa_idx >= 0 and wa_idx < len(fields):
+                            if fields[wa_idx] != '\\N' and fields[wa_idx] in c1_wa_ids:
+                                fields[wa_idx] = '\\N'
+                                line = '\t'.join(fields) + '\n'
+                                total_wa_nulled += 1
+
                         fout.write(line)
                         total_kept += 1
                         for mi in media_indices:
@@ -309,6 +326,8 @@ def pass2_write_filtered(dump_path, output_path, company_ids, id_sets, c1_wa_ids
     elapsed = time.time() - start
     print(f"  Done: {fmt(line_count)} lines in {elapsed:.1f}s")
     print(f"  Kept: {fmt(total_kept)}, Skipped: {fmt(total_skipped)}")
+    if total_wa_nulled:
+        print(f"  whatsappId NULLed (company 1 orphans): {fmt(total_wa_nulled)}")
     print(f"  Media references: {fmt(len(media_files))}")
 
     return total_kept, total_skipped, media_files

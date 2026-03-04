@@ -169,6 +169,27 @@ restore() {
     echo "Restoring database..."
     psql -h "${DB_HOST}" -U "${DB_USER}" -d "${DB_NAME}" -q < "${BACKUP_DIR}/db_dump.sql" &> /dev/null || exit 1
 
+    # Verify and repair FK constraints that may have failed silently
+    echo ""
+    echo "Verifying schema integrity..."
+    python3 /app/ticketz-verify.py "${BACKUP_DIR}/db_dump.sql" \
+        --db-host "${DB_HOST}" \
+        --db-name "${DB_NAME}" \
+        --db-user "${DB_USER}" \
+        --db-port "${DB_PORT}"
+
+    VERIFY_EXIT=$?
+
+    # Clean up dump file
+    rm -f "${BACKUP_DIR}/db_dump.sql"
+
+    if [ $VERIFY_EXIT -ne 0 ]; then
+        echo ""
+        echo "WARNING: Schema verification found issues that could not be auto-fixed."
+        echo "  The database was restored but may have missing FK constraints."
+        echo "  Check the output above for details."
+    fi
+
     echo "Restoration completed."
 }
 
