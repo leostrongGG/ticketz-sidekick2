@@ -13,6 +13,8 @@ Baseado no [ticketz-sidekick](https://github.com/ticketz-oss/ticketz-sidekick) o
 - ✅ Conexões WhatsApp da company 1 excluídas para evitar conflitos de sessão
 - ✅ Mídias filtradas para incluir apenas arquivos referenciados
 - ✅ Roda como container **separado** ao lado da instalação Ticketz existente
+- ✅ **Menu interativo** — guia passo a passo ao rodar sem argumentos
+- ✅ **db-heal** — corrige sessions acumuladas, cria índices FK faltando e recupera bloat do Baileys
 
 ## 🏗️ Arquitetura
 
@@ -49,9 +51,11 @@ Baseado no [ticketz-sidekick](https://github.com/ticketz-oss/ticketz-sidekick) o
 
 ```
 sidekick2/
- sidekick2.sh            # Script principal (backup/restore/import)
+ sidekick2.sh            # Script principal (menu + backup/restore/import/db-heal)
+ db-heal.sh              # Correção de banco: sessions, índices FK, Baileys bloat
  ticketz-filter.py       # Filtro de dump SQL por empresa (2 passagens)
  ticketz-import.py       # Importação com remapeamento de IDs
+ ticketz-verify.py       # Verificação de integridade de FK pós-restore
  Dockerfile              # Container baseado em postgres:16-alpine
  docker-compose.yaml     # Configuração standalone com rede/volumes externos
  README.md               # Esta documentação
@@ -98,6 +102,32 @@ docker volume ls | grep ticketz
 ```
 
 ## 💡 Uso
+
+### 🖥️ Menu Interativo
+
+Ao rodar sem argumentos, o sidekick2 exibe um menu interativo em português que guia por todas as operações:
+
+```bash
+cd ~/sidekick2
+docker compose run --rm sidekick2
+```
+
+```
+===================================================================
+  Ticketz Sidekick2 - Menu Interativo
+===================================================================
+
+  1. Backup
+  2. Restore
+  3. Importar empresa
+  4. Corrigir banco de dados (db-heal)
+  5. Limpeza de backups antigos
+  0. Sair
+```
+
+O menu lista automaticamente as empresas do banco (no backup filtrado), os backups disponíveis com tamanho e data, e pergunta sobre opções como `--dry-run` e `--db-heal` antes de executar.
+
+Todos os comandos abaixo também funcionam diretamente (modo não-interativo, compatível com automação/cron).
 
 ### 1️⃣ Backup por Empresa (uso principal)
 
@@ -150,7 +180,34 @@ cd ~/sidekick2
 docker compose run --rm sidekick2 restore
 ```
 
-### 4️⃣ Import (adicionar empresa a instalação existente)
+### 4️⃣ DB Heal (corrigir banco de dados)
+
+Corrige problemas comuns de banco de dados em instalações Ticketz:
+- Remove `BaileysKeys` com `type='session'` acumuladas (causam CPU alto após atualização do Baileys)
+- Remove `UserSocketSessions` antigas (>2h) que acumulam indefinidamente
+- Configura autovacuum agressivo no `Baileys` (evita bloat do TOAST com JSOns de contacts)
+- Executa `VACUUM FULL` no `Baileys` para recuperar espaço (lock de milissegundos — ~20 linhas)
+- Cria todos os índices FK faltando (~65 índices) com `CONCURRENTLY` — **sem downtime**
+- Compatível com todas as versões do Ticketz (Pro, Lite) — colunas ausentes são ignoradas
+
+```bash
+cd ~/sidekick2
+
+# Via menu interativo (opção 4)
+docker compose run --rm sidekick2
+
+# Ou direto pela linha de comando
+docker compose run --rm sidekick2 db-heal
+
+# Executar automaticamente após restore ou import
+docker compose run --rm sidekick2 restore --db-heal
+docker compose run --rm sidekick2 import /backups/ticketz-backup-XXXXX.tar.gz --db-heal
+```
+
+> **Quando usar:** Após atualizar a lib do Baileys, ao notar CPU alto no backend, ou em
+> instalações novas para garantir que todos os índices estão presentes.
+
+### 5️⃣ Import (adicionar empresa a instalação existente)
 
 Importa uma empresa de um backup filtrado para um banco Ticketz ativo.
 Todos os IDs são remapeados para evitar conflitos. A operação é envolvida
@@ -164,6 +221,9 @@ docker compose run --rm sidekick2 import /backups/ticketz-backup-XXXXX.tar.gz --
 
 # Executar a importação:
 docker compose run --rm sidekick2 import /backups/ticketz-backup-XXXXX.tar.gz
+
+# Corrigir banco automaticamente após importar:
+docker compose run --rm sidekick2 import /backups/ticketz-backup-XXXXX.tar.gz --db-heal
 ```
 
 #### Antes de importar
@@ -280,6 +340,8 @@ As **conexões WhatsApp da company 1 são excluídas** para evitar conflitos de 
 - ✅ **Backup de segurança** criado automaticamente antes do import
 - ✅ **`session_replication_role = replica`** — desabilita triggers FK durante import
 - ✅ **Validações** — verifica empresa única, banco não-vazio, backend parado
+- ✅ **db-heal idempotente** — `CREATE INDEX IF NOT EXISTS`, seguro para rodar múltiplas vezes
+- ✅ **Compatibilidade de schema** — db-heal detecta colunas ausentes (Lite vs Pro) antes de criar índices
 
 ## 🔧 Troubleshooting
 
@@ -310,13 +372,24 @@ Contribuições são bem-vindas! Veja [CONTRIBUTING.md](CONTRIBUTING.md) para de
 
 ## 📝 Changelog
 
+### v1.3.0 (2026-03-20)
+- ✨ Menu interativo em português (rodar sem argumentos)
+- ✨ Novo comando `db-heal` — corrige sessions, índices FK, Baileys bloat
+- ✨ Flags `--db-heal` em `restore` e `import` para correção automática pós-operação
+- ✨ `db-heal.sh` standalone — pode ser executado independentemente
+- 🐛 `db-heal` compatível com todas as versões Ticketz (colunas ausentes ignoradas)
+
+### v1.2.0 (2026-02-25)
+- ✨ Verificação e reparo automático de FK constraints pós-restore (`ticketz-verify.py`)
+- ✨ `cleanup` disponível como comando direto
+
 ### v1.1.0 (2026-02-22)
--  Backups salvos na pasta do sidekick2 (independente do Ticketz)
--  README corrigido com fluxos completos de migração e restore
--  Clone com nome personalizado documentado (`~/sidekick2`)
+- ✨ Backups salvos na pasta do sidekick2 (independente do Ticketz)
+- 📝 README corrigido com fluxos completos de migração e restore
+- 📝 Clone com nome personalizado documentado (`~/sidekick2`)
 
 ### v1.0.0 (2026-02-22)
--  Release inicial
+- 🚀 Release inicial
 - Backup filtrado por empresa(s) com `--companies`
 - Import com remapeamento completo de IDs
 - Dry-run para preview de importação

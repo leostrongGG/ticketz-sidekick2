@@ -123,7 +123,16 @@ backup() {
 
 # Function to restore the database and files
 restore() {
-  
+    DB_HEAL=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --db-heal)
+                DB_HEAL=1
+                ;;
+        esac
+        shift
+    done
+
     # Check if there are backup files
     if [ -z "$(ls -A ${BACKUP_DIR}/${BACKUP_BASENAME}-*.tar.gz 2>/dev/null)" ]; then
         echo "No backup files found. Exiting."
@@ -191,6 +200,12 @@ restore() {
     fi
 
     echo "Restoration completed."
+
+    if [ $DB_HEAL -eq 1 ]; then
+        echo ""
+        echo "Running database heal (--db-heal)..."
+        bash /app/db-heal.sh
+    fi
 }
 
 
@@ -198,10 +213,14 @@ restore() {
 import_company() {
     IMPORT_FILE=""
     DRY_RUN=""
+    DB_HEAL=0
     while [ $# -gt 0 ]; do
         case "$1" in
             --dry-run)
                 DRY_RUN="--dry-run"
+                ;;
+            --db-heal)
+                DB_HEAL=1
                 ;;
             *)
                 if [ -z "${IMPORT_FILE}" ]; then
@@ -214,7 +233,7 @@ import_company() {
 
     if [ -z "${IMPORT_FILE}" ]; then
         echo ""
-        echo "Usage: sidekick2 import <backup.tar.gz> [--dry-run]"
+        echo "Usage: sidekick2 import <backup.tar.gz> [--dry-run] [--db-heal]"
         echo ""
         echo "  Import a single company from a filtered backup into an existing"
         echo "  Ticketz database. The backup must contain exactly ONE company"
@@ -227,6 +246,8 @@ import_company() {
         echo "Options:"
         echo "  --dry-run    Generate the import SQL without executing it."
         echo "               The SQL is saved to /backups/ for inspection."
+        echo "  --db-heal    Run db-heal after import (clean sessions, create"
+        echo "               missing FK indexes, reclaim Baileys bloat)."
         echo ""
         exit 1
     fi
@@ -386,8 +407,183 @@ import_company() {
     echo "  Safety backup: ${SAFETY_BACKUP}"
     echo "==================================================================="
     echo ""
+
+    if [ $DB_HEAL -eq 1 ]; then
+        echo "Running database heal (--db-heal)..."
+        bash /app/db-heal.sh
+    fi
 }
 
+
+# Interactive menu
+interactive_menu() {
+    echo ""
+    echo "==================================================================="
+    echo "  Ticketz Sidekick2 - Menu Interativo"
+    echo "==================================================================="
+    echo ""
+    echo "  1. Backup"
+    echo "  2. Restore"
+    echo "  3. Importar empresa"
+    echo "  4. Corrigir banco de dados (db-heal)"
+    echo "  5. Limpeza de backups antigos"
+    echo "  0. Sair"
+    echo ""
+    read -p "Escolha uma opção: " OPT
+    echo ""
+
+    case "$OPT" in
+        1) menu_backup ;;
+        2) menu_restore ;;
+        3) menu_import ;;
+        4)
+            echo "Iniciando correção do banco de dados..."
+            bash /app/db-heal.sh
+            ;;
+        5)
+            echo "Executando limpeza de backups antigos..."
+            cleanup
+            ;;
+        0)
+            echo "Saindo."
+            exit 0
+            ;;
+        *)
+            echo "Opção inválida."
+            exit 1
+            ;;
+    esac
+}
+
+menu_backup() {
+    echo "--- Backup ---"
+    echo ""
+    echo "  1. Backup completo (banco + arquivos de mídia)"
+    echo "  2. Backup somente do banco de dados"
+    echo "  3. Backup filtrado por empresa(s)"
+    echo "  0. Voltar"
+    echo ""
+    read -p "Escolha uma opção: " BOPT
+    echo ""
+
+    case "$BOPT" in
+        1)
+            echo "Iniciando backup completo..."
+            backup
+            ;;
+        2)
+            echo "Iniciando backup somente do banco..."
+            backup --dbonly
+            ;;
+        3)
+            # List companies from DB to help the user choose
+            echo "Empresas cadastradas no banco:"
+            echo ""
+            psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -t \
+                -c 'SELECT id, "name" FROM "Companies" ORDER BY id;' 2>/dev/null \
+                | awk -F'|' '{printf "  %-6s %s\n", $1, $2}' | grep -v '^\s*$'
+            echo ""
+            read -p "Informe os IDs das empresas separados por vírgula (ex: 5,12,30): " COMP_IDS
+            if [ -z "${COMP_IDS}" ]; then
+                echo "Nenhum ID informado. Cancelando."
+                exit 1
+            fi
+            echo ""
+            echo "  1. Incluir arquivos de mídia no backup"
+            echo "  2. Somente banco de dados"
+            echo ""
+            read -p "Escolha (1/2): " MOPT
+            if [ "$MOPT" = "2" ]; then
+                echo "Iniciando backup filtrado (somente banco) para empresas: ${COMP_IDS}..."
+                backup --companies "${COMP_IDS}" --dbonly
+            else
+                echo "Iniciando backup filtrado completo para empresas: ${COMP_IDS}..."
+                backup --companies "${COMP_IDS}"
+            fi
+            ;;
+        0)
+            interactive_menu
+            ;;
+        *)
+            echo "Opção inválida."
+            exit 1
+            ;;
+    esac
+}
+
+menu_restore() {
+    echo "--- Restore ---"
+    echo ""
+
+    # List available backups
+    BACKUPS=($(ls -t ${BACKUP_DIR}/${BACKUP_BASENAME}-*.tar.gz 2>/dev/null))
+    if [ ${#BACKUPS[@]} -eq 0 ]; then
+        echo "Nenhum arquivo de backup encontrado em ${BACKUP_DIR}."
+        exit 1
+    fi
+
+    echo "Backups disponíveis:"
+    echo ""
+    for i in "${!BACKUPS[@]}"; do
+        SIZE=$(du -h "${BACKUPS[$i]}" | cut -f1)
+        DATE=$(stat -c '%y' "${BACKUPS[$i]}" | cut -d'.' -f1)
+        printf "  %2d. %s  (%s)  %s\n" "$((i+1))" "$(basename ${BACKUPS[$i]})" "$SIZE" "$DATE"
+    done
+    echo ""
+    echo "  O restore usa automaticamente o backup mais recente."
+    echo ""
+    read -p "Deseja executar db-heal após o restore? (s/n): " HEAL_OPT
+    echo ""
+
+    if [ "$HEAL_OPT" = "s" ] || [ "$HEAL_OPT" = "S" ]; then
+        echo "Iniciando restore com db-heal..."
+        restore --db-heal
+    else
+        echo "Iniciando restore..."
+        restore
+    fi
+}
+
+menu_import() {
+    echo "--- Importar empresa ---"
+    echo ""
+
+    # List available backup files (including pre-import safety backups)
+    BACKUPS=($(ls -t ${BACKUP_DIR}/*.tar.gz 2>/dev/null))
+    if [ ${#BACKUPS[@]} -eq 0 ]; then
+        echo "Nenhum arquivo .tar.gz encontrado em ${BACKUP_DIR}."
+        exit 1
+    fi
+
+    echo "Arquivos disponíveis:"
+    echo ""
+    for i in "${!BACKUPS[@]}"; do
+        SIZE=$(du -h "${BACKUPS[$i]}" | cut -f1)
+        DATE=$(stat -c '%y' "${BACKUPS[$i]}" | cut -d'.' -f1)
+        printf "  %2d. %s  (%s)  %s\n" "$((i+1))" "$(basename ${BACKUPS[$i]})" "$SIZE" "$DATE"
+    done
+    echo ""
+    read -p "Número do arquivo para importar: " FILE_NUM
+
+    if ! [[ "$FILE_NUM" =~ ^[0-9]+$ ]] || [ "$FILE_NUM" -lt 1 ] || [ "$FILE_NUM" -gt "${#BACKUPS[@]}" ]; then
+        echo "Número inválido."
+        exit 1
+    fi
+
+    SELECTED_FILE="${BACKUPS[$((FILE_NUM-1))]}"
+    echo ""
+    echo "Arquivo selecionado: $(basename ${SELECTED_FILE})"
+    echo ""
+    read -p "Executar em modo dry-run (apenas simulação, sem alterar o banco)? (s/n): " DRY_OPT
+    read -p "Executar db-heal após a importação? (s/n): " HEAL_OPT
+    echo ""
+
+    ARGS="${SELECTED_FILE}"
+    [ "$DRY_OPT"  = "s" ] || [ "$DRY_OPT"  = "S" ] && ARGS="${ARGS} --dry-run"
+    [ "$HEAL_OPT" = "s" ] || [ "$HEAL_OPT" = "S" ] && ARGS="${ARGS} --db-heal"
+
+    import_company ${ARGS}
+}
 
 # Function for cleanup of old backups
 cleanup() {
@@ -406,14 +602,24 @@ case "$1" in
         backup $*
         ;;
     restore)
-        restore
+        shift
+        restore $*
         ;;
     import)
         shift
         import_company $*
         ;;
+    db-heal)
+        bash /app/db-heal.sh
+        ;;
+    cleanup)
+        cleanup
+        ;;
+    ""|menu)
+        interactive_menu
+        ;;
     *)
-        echo "Unrecognized command. Use 'backup', 'restore' or 'import'."
+        echo "Unrecognized command. Use 'backup', 'restore', 'import', 'db-heal', 'cleanup' or run without arguments for interactive menu."
         exit 1
         ;;
 esac

@@ -10,10 +10,11 @@ RUN apk update && apk add --no-cache \
 WORKDIR /app
 
 COPY sidekick2.sh /app/sidekick2.sh
+COPY db-heal.sh /app/db-heal.sh
 COPY ticketz-filter.py /app/ticketz-filter.py
 COPY ticketz-import.py /app/ticketz-import.py
 COPY ticketz-verify.py /app/ticketz-verify.py
 
-RUN chmod +x /app/sidekick2.sh
+RUN chmod +x /app/sidekick2.sh /app/db-heal.sh
 
 ENTRYPOINT ["bash", "/app/sidekick2.sh"]
