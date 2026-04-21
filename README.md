@@ -6,6 +6,8 @@ Ferramenta avançada de backup, restore e importação de empresas para o [Ticke
 
 Baseado no [ticketz-sidekick](https://github.com/ticketz-oss/ticketz-sidekick) original, o sidekick2 adiciona recursos para gerenciar backups filtrados por empresa e importar empresas entre instalações Ticketz diferentes.
 
+> ⚠️ **Compatibilidade**: Desenvolvido e testado para **Ticketz PRO v0.99.179-pro**. Versões com alterações no schema do banco de dados podem requerer atualização dos scripts.
+
 - ✅ Backup filtrado por empresa(s) específica(s) com `--companies`
 - ✅ Importação de empresa para instalação existente com remapeamento completo de IDs
 - ✅ Backups salvos na **própria pasta do sidekick2** — independente da instalação Ticketz
@@ -375,6 +377,7 @@ Contribuições são bem-vindas! Veja [CONTRIBUTING.md](CONTRIBUTING.md) para de
 ### v1.3.1 (2026-04-21)
 - 🐛 Adicionadas `BaileysContacts` e `NotificameSipExtensions` ao filtro de empresas (`INDIRECT_TABLES`)
 - 🐛 Adicionado `notificameConnectionId` ao remapeamento de IDs no import (`FK_COLUMN_MAP`)
+- 📝 Versão mínima compatível documentada: **Ticketz PRO v0.99.179-pro**
 
 ### v1.3.0 (2026-03-20)
 - ✨ Menu interativo em português (rodar sem argumentos)

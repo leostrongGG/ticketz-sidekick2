@@ -421,6 +421,8 @@ interactive_menu() {
     echo "==================================================================="
     echo "  Ticketz Sidekick2 - Menu Interativo"
     echo "==================================================================="
+    echo "  Compatível com: Ticketz PRO v0.99.179-pro"
+    echo "==================================================================="
     echo ""
     echo "  1. Backup"
     echo "  2. Restore"

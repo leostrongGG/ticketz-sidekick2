@@ -264,6 +264,11 @@ create_index_safe "OldMessages"          "userId"     "idx_oldmessages_userid"
 create_index_safe "WhatsappLidMaps"      "contactId"  "idx_whatsapplid_contactid"
 create_index_safe "WebpushSubscriptions" "userId"     "idx_webpushsubscriptions_userid"
 
+# BaileysContacts / NotificameSipExtensions (added in schema after v1.3.0)
+create_index_safe "BaileysContacts"         "whatsappId"             "idx_baileycontacts_whatsappid"
+create_index_safe "NotificameSipExtensions" "notificameConnectionId" "idx_notificamesip_connectionid"
+create_index_safe "NotificameSipExtensions" "userId"                 "idx_notificamesip_userid"
+
 echo ""
 echo "Step 5/5 - Updating statistics..."
 psql_run -c "VACUUM ANALYZE;" 2>/dev/null
