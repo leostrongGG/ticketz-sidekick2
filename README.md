@@ -73,10 +73,10 @@ Importante: o restore espera um banco *vazio* (sem tabelas). Há duas formas seg
 - Acesso ao servidor via SSH
 
 ### Setup
-docker compose down -v  # para remover containers + volumes (APAGA o banco atual)
-docker compose up -d    # depois reinstale (instalador ou docker compose up)
-cd ~/sidekick2
-docker compose run --rm sidekick2 restore  # e então rode o restore a partir da pasta ~/sidekick2
+
+```bash
+# Clone o repositório (pode usar qualquer nome de pasta)
+git clone https://github.com/leostrongGG/ticketz-sidekick2.git ~/sidekick2
 cd ~/sidekick2
 mkdir -p backups
 ```
@@ -243,7 +243,7 @@ docker compose run --rm sidekick2 import /backups/ticketz-backup-XXXXX.tar.gz --
 3. IDs máximos atuais são lidos do banco destino
 4. Todos os IDs no dump são remapeados para novos valores sequenciais:
    - `companyId`, `userId`, `contactId`, `ticketId`, `queueId`, `whatsappId`
-   - `tagId`, `funnelId`, `chatId`, `campaignId`, `contactListId`
+   - `tagId`, `funnelId`, `chatId`, `campaignId`, `contactListId`, `notificameConnectionId`
    - `parentId` (auto-referência em QueueOptions)
 5. Caminhos de mídia no banco são atualizados (`media/{oldCID}/...` → `media/{newCID}/...`)
 6. Arquivos de mídia são copiados com estrutura de diretórios remapeada
@@ -322,7 +322,7 @@ As **conexões WhatsApp da company 1 são excluídas** para evitar conflitos de 
 |---|---|---|
 | **Globais** | Plans, Helps, Translations, SequelizeMeta, SequelizeData | Sem filtro (mantém tudo) |
 | **Diretas** | Contacts, Tickets, Messages, Users, Queues, Whatsapps, +16 | Filtro por `companyId` |
-| **Indiretas** | Baileys, BaileysKeys, ChatMessages, ContactTags, TicketTags, +16 | Filtro por FK  IDs coletados |
+| **Indiretas** | Baileys, BaileysContacts, BaileysKeys, ChatMessages, ContactTags, TicketTags, NotificameSipExtensions, +16 | Filtro por FK → IDs coletados |
 | **Empresa** | Companies | Filtro por `id` |
 
 ## ⚠️ Avisos Importantes
@@ -371,6 +371,10 @@ docker ps | grep ticketz
 Contribuições são bem-vindas! Veja [CONTRIBUTING.md](CONTRIBUTING.md) para detalhes.
 
 ## 📝 Changelog
+
+### v1.3.1 (2026-04-21)
+- 🐛 Adicionadas `BaileysContacts` e `NotificameSipExtensions` ao filtro de empresas (`INDIRECT_TABLES`)
+- 🐛 Adicionado `notificameConnectionId` ao remapeamento de IDs no import (`FK_COLUMN_MAP`)
 
 ### v1.3.0 (2026-03-20)
 - ✨ Menu interativo em português (rodar sem argumentos)

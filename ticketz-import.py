@@ -87,9 +87,12 @@ INDIRECT_TABLES = {
     'TicketTags':               ('ticketId',    'ticket_ids'),
     'UserQueues':               ('userId',      'user_ids'),
     'UserSocketSessions':       ('userId',      'user_ids'),
-    'Wavoips':                  ('whatsappId',  'whatsapp_ids'),
-    'WebpushSubscriptions':     ('userId',      'user_ids'),
-    'WhatsappQueues':           ('whatsappId',  'whatsapp_ids'),
+    'Wavoips':                  ('whatsappId',             'whatsapp_ids'),
+    'WebpushSubscriptions':     ('userId',                  'user_ids'),
+    'WhatsappQueues':           ('whatsappId',             'whatsapp_ids'),
+    # Tables added after schema review 2026-04-21
+    'BaileysContacts':          ('whatsappId',             'whatsapp_ids'),
+    'NotificameSipExtensions':  ('notificameConnectionId', 'whatsapp_ids'),
 }
 
 # All data tables (excluding global)
@@ -114,7 +117,8 @@ FK_COLUMN_MAP = {
     'funnelId':      'Funnels',
     'chatId':        'Chats',
     'campaignId':    'Campaigns',
-    'contactListId': 'ContactLists',
+    'contactListId':            'ContactLists',
+    'notificameConnectionId':  'Whatsapps',  # added 2026-04-21
 }
 
 # Tables where 'parentId' is a self-reference
