@@ -121,6 +121,12 @@ FK_COLUMN_MAP = {
     'notificameConnectionId':  'Whatsapps',  # added 2026-04-21
 }
 
+# Columns that share FK-like names but are not numeric FKs in specific tables.
+# Example: BaileysContacts.contactId stores WhatsApp JID text (e.g. 5511...@s.whatsapp.net).
+NON_FK_COLUMNS_BY_TABLE = {
+    'BaileysContacts': {'contactId'},
+}
+
 # Tables where 'parentId' is a self-reference
 SELF_REF_PARENT = {'QueueOptions'}
 
@@ -508,6 +514,8 @@ def pass2_rewrite(dump_path, output_path, source_company_id, id_maps, id_sets, m
                         remap_cols = {}
                         for ci, col_name in enumerate(cols):
                             if col_name == 'id':
+                                continue
+                            if table in NON_FK_COLUMNS_BY_TABLE and col_name in NON_FK_COLUMNS_BY_TABLE[table]:
                                 continue
                             if col_name in FK_COLUMN_MAP:
                                 remap_cols[ci] = FK_COLUMN_MAP[col_name]
