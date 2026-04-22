@@ -375,9 +375,10 @@ import_company() {
 
     # Execute the import SQL
     echo ""
-    echo "Executing import SQL (single transaction)..."
+    echo "Executing import SQL..."
+    # SQL file already contains BEGIN/COMMIT. ON_ERROR_STOP makes psql return non-zero on first SQL error.
     psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
-        --single-transaction -q < "${OUTPUT_SQL}" 2>&1
+        -v ON_ERROR_STOP=1 -q < "${OUTPUT_SQL}" 2>&1
 
     if [ $? -ne 0 ]; then
         echo ""

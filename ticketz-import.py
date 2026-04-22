@@ -446,6 +446,7 @@ def pass2_rewrite(dump_path, output_path, source_company_id, id_maps, id_sets, m
     ticket_map = id_maps.get('Tickets', {})
 
     tables_imported = []
+    tables_with_id = set()
     media_ops = []
     warnings = []
 
@@ -509,6 +510,8 @@ def pass2_rewrite(dump_path, output_path, source_company_id, id_maps, id_sets, m
                     if is_data_table:
                         # Find ID column
                         id_col = col_idx(cols, 'id')
+                        if id_col >= 0:
+                            tables_with_id.add(table)
 
                         # Build FK remapping index
                         remap_cols = {}
@@ -649,9 +652,18 @@ def pass2_rewrite(dump_path, output_path, source_company_id, id_maps, id_sets, m
         fout.write("-- Update sequences to reflect imported data\n")
         all_imported = set(t for t, _ in tables_imported)
         for table in sorted(all_imported):
+            if table not in tables_with_id:
+                continue
+            # Only update sequence when this table has an id column and a serial/identity sequence.
             fout.write(
-                f'SELECT setval(\'"{table}_id_seq"\', '
-                f'(SELECT COALESCE(MAX("id"), 1) FROM "{table}"), true);\n'
+                "DO $$\n"
+                "DECLARE seq_name text;\n"
+                "BEGIN\n"
+                f"  SELECT pg_get_serial_sequence('\\\"{table}\\\"', 'id') INTO seq_name;\n"
+                "  IF seq_name IS NOT NULL THEN\n"
+                f"    EXECUTE format('SELECT setval(%L::regclass, (SELECT COALESCE(MAX(id), 1) FROM %I), true);', seq_name, '{table}');\n"
+                "  END IF;\n"
+                "END $$;\n"
             )
 
         fout.write("\nCOMMIT;\n")
