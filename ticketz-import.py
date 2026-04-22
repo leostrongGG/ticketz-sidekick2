@@ -654,14 +654,12 @@ def pass2_rewrite(dump_path, output_path, source_company_id, id_maps, id_sets, m
         for table in sorted(all_imported):
             if table not in tables_with_id:
                 continue
-            # Only update sequence when this table has an id column and a serial/identity sequence.
+            # Only update sequence when this table has an id column and the conventional sequence exists.
             fout.write(
                 "DO $$\n"
-                "DECLARE seq_name text;\n"
                 "BEGIN\n"
-                f"  SELECT pg_get_serial_sequence('\\\"{table}\\\"', 'id') INTO seq_name;\n"
-                "  IF seq_name IS NOT NULL THEN\n"
-                f"    EXECUTE format('SELECT setval(%L::regclass, (SELECT COALESCE(MAX(id), 1) FROM %I), true);', seq_name, '{table}');\n"
+                f"  IF to_regclass('\\\"{table}_id_seq\\\"') IS NOT NULL THEN\n"
+                f"    PERFORM setval('\\\"{table}_id_seq\\\"', (SELECT COALESCE(MAX(id), 1) FROM \"{table}\"), true);\n"
                 "  END IF;\n"
                 "END $$;\n"
             )
