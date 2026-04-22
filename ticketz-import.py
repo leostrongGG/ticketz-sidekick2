@@ -35,6 +35,7 @@ import time
 import subprocess
 import json
 import argparse
+from datetime import date
 
 
 # ============================================================
@@ -252,6 +253,17 @@ def check_db_not_empty(db_params):
     return int(result) > 0
 
 
+def get_min_plan_id(db_params):
+    """Return the smallest existing planId in the target database, or None if Plans is empty."""
+    result = query_db('SELECT MIN("id") FROM "Plans"', **db_params)
+    if result and result != '':
+        try:
+            return str(int(result))
+        except ValueError:
+            pass
+    return None
+
+
 def get_max_ids(db_params):
     """Get MAX(id) for each data table in the target database."""
     max_ids = {}
@@ -418,7 +430,7 @@ def build_id_maps(table_old_ids, max_ids):
 # PASS 2: Rewrite dump with remapped IDs
 # ============================================================
 
-def pass2_rewrite(dump_path, output_path, source_company_id, id_maps, id_sets, max_ids):
+def pass2_rewrite(dump_path, output_path, source_company_id, id_maps, id_sets, max_ids, db_params):
     """
     Read the dump and generate the import SQL with remapped IDs.
 
@@ -444,6 +456,11 @@ def pass2_rewrite(dump_path, output_path, source_company_id, id_maps, id_sets, m
     company_map = id_maps.get('Companies', {})
     contact_map = id_maps.get('Contacts', {})
     ticket_map = id_maps.get('Tickets', {})
+
+    # Determine safe planId for the imported company
+    safe_plan_id = get_min_plan_id(db_params)
+    if safe_plan_id is None:
+        safe_plan_id = '1'  # fallback: will be visible in the post-import warning
 
     tables_imported = []
     tables_with_id = set()
@@ -482,6 +499,11 @@ def pass2_rewrite(dump_path, output_path, source_company_id, id_maps, id_sets, m
         membership_mode = None  # 'companyId', 'fk_set', 'company_table'
         membership_set = None
 
+        # Companies row override: planId=1, dueDate=today
+        company_planid_col = -1
+        company_duedate_col = -1
+        company_overrides = []  # [(old_planId, old_dueDate)]
+
         for line in fin:
             line_count += 1
             if line_count % 2_000_000 == 0:
@@ -506,6 +528,10 @@ def pass2_rewrite(dump_path, output_path, source_company_id, id_maps, id_sets, m
 
                     is_company_table = (table == 'Companies')
                     is_self_ref_table = (table in SELF_REF_PARENT)
+
+                    if is_company_table:
+                        company_planid_col = col_idx(cols, 'planId')
+                        company_duedate_col = col_idx(cols, 'dueDate')
 
                     if is_data_table:
                         # Find ID column
@@ -643,6 +669,16 @@ def pass2_rewrite(dump_path, output_path, source_company_id, id_maps, id_sets, m
                     if old_path and new_path:
                         media_ops.append((old_path, new_path))
 
+            # --- Override planId/dueDate for Companies rows ---
+            if is_company_table:
+                old_plan = fields[company_planid_col] if company_planid_col >= 0 and company_planid_col < len(fields) else '?'
+                old_due  = fields[company_duedate_col] if company_duedate_col >= 0 and company_duedate_col < len(fields) else '?'
+                if company_planid_col >= 0 and company_planid_col < len(fields):
+                    fields[company_planid_col] = safe_plan_id
+                if company_duedate_col >= 0 and company_duedate_col < len(fields):
+                    fields[company_duedate_col] = date.today().isoformat()
+                company_overrides.append((old_plan, old_due))
+
             row_buffer.append(fields)
 
         # --- Write sequence updates and close transaction ---
@@ -685,6 +721,13 @@ def pass2_rewrite(dump_path, output_path, source_company_id, id_maps, id_sets, m
 
     if media_ops:
         print(f"\n  Media path remappings: {fmt(len(media_ops))}")
+
+    if company_overrides:
+        print(f"\n  ⚠ IMPORTANT — Company plan and due date were reset:")
+        for old_plan, old_due in company_overrides:
+            print(f"    planId: {old_plan} → {safe_plan_id}  |  dueDate: {old_due} → {date.today().isoformat()}")
+        print(f"    After starting the backend, update manually in the admin panel or via SQL:")
+        print(f"      UPDATE \"Companies\" SET \"planId\" = <correct_plan_id>, \"dueDate\" = '<YYYY-MM-DD>' WHERE id = {new_company_id};")
 
     return tables_imported, media_ops
 
@@ -888,7 +931,7 @@ Known limitations:
     # ---- Pass 2: Generate import SQL ----
     tables_imported, media_ops = pass2_rewrite(
         dump_path, output_path, source_company_id,
-        id_maps, id_sets, max_ids
+        id_maps, id_sets, max_ids, db_params
     )
 
     output_size = os.path.getsize(output_path)

@@ -232,7 +232,7 @@ docker compose run --rm sidekick2 import /backups/ticketz-backup-XXXXX.tar.gz --
 
 1. **Pare o backend do Ticketz** para evitar conflitos de IDs:
    ```bash
-   cd ~/ticketz-docker-acme && docker compose stop ticketz-docker-acme-backend-1
+   cd ~/ticketz-docker-acme && docker compose stop backend
    ```
 2. O script pede confirmação antes de prosseguir
 3. Um backup de segurança do banco atual é criado automaticamente
@@ -331,7 +331,7 @@ As **conexões WhatsApp da company 1 são excluídas** para evitar conflitos de 
 
 - **Backups ficam em `~/sidekick2/backups/`**  pasta do sidekick2, nunca dentro do Ticketz. Isso garante que ao deletar a pasta do Ticketz para reinstalar, os backups não são perdidos.
 - **S3/Storage remoto**: Se a instalação de origem usava S3 para mídia, use um **bucket diferente** no destino para evitar conflitos. URLs de S3 no banco **NÃO são remapeadas**.
-- **Plans**: O `planId` no registro da empresa deve corresponder a um Plan válido no banco destino.
+- **Plans**: O `planId` e `dueDate` da empresa importada são **sempre resetados** para `planId = 1` (plano padrão) e `dueDate = data atual`. Ao final do import, o script exibe o SQL para corrigi-los manualmente conforme o plano correto no servidor destino.
 - **Sessões WhatsApp**: Dados do Baileys são importados mas podem não funcionar no novo servidor (sessões são específicas do dispositivo).
 - **Dados da company 1** do backup são **ignorados** no import (o destino já tem sua própria company 1).
 
@@ -373,6 +373,11 @@ docker ps | grep ticketz
 Contribuições são bem-vindas! Veja [CONTRIBUTING.md](CONTRIBUTING.md) para detalhes.
 
 ## 📝 Changelog
+
+### v1.3.2 (2026-04-22)
+- 🐛 `planId` e `dueDate` da empresa importada são resetados para valores seguros (`planId=1`, `dueDate=hoje`) — evita tela branca quando o plano de origem não existe no destino
+- 🐛 Instrução de parar backend corrigida para `docker compose stop backend`
+- 🐛 Instrução de subir backend corrigida para `docker compose up -d backend`
 
 ### v1.3.1 (2026-04-21)
 - 🐛 Adicionadas `BaileysContacts` e `NotificameSipExtensions` ao filtro de empresas (`INDIRECT_TABLES`)
